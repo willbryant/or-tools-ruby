@@ -3,9 +3,33 @@ module ORTools
     attr_reader :left, :op, :right
 
     def initialize(left, op, right)
-      @left = Expression.to_expression(left)
+      @left = left.is_a?(Comparison) ? left : Expression.to_expression(left)
       @op = op
-      @right = Expression.to_expression(right)
+      @right = right.is_a?(Comparison) ? right : Expression.to_expression(right)
+    end
+
+    def >(other)
+      Comparison.new(self, :>, other)
+    end
+
+    def <(other)
+      Comparison.new(self, :<, other)
+    end
+
+    def >=(other)
+      Comparison.new(self, :>=, other)
+    end
+
+    def <=(other)
+      Comparison.new(self, :<=, other)
+    end
+
+    def ==(other)
+      Comparison.new(self, :==, other)
+    end
+
+    def !=(other)
+      Comparison.new(self, :!=, other)
     end
 
     def inspect

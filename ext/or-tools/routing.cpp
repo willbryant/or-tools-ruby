@@ -112,28 +112,75 @@ int64_t int64_strict(VALUE v) {
 }
 
 operations_research::IntExpr* int_expr(operations_research::Solver& solver, Object o) {
-    Object utils = Rice::define_module("ORTools").const_get("Utils");
-    Hash rb_coeffs = utils.call("index_expression", o);
+  auto class_name(o.class_of().name());
+  if (class_name == "ORTools::Constant") {
+    // MakeIntConst returns an IntVar, but it's really an IntConst subclass with bound values, so
+    // passing it as an input to other constraint methods is mostly well-optimized.
+    return solver.MakeIntConst(Rice::detail::From_Ruby<int64_t>().convert(o.call("value")));
+  } else if (class_name == "ORTools::Product") {
+    // MakeProd handles the left and right Bound() cases specially itself, so we don't need to optimize
+    // IntVar*Constant or Constant*IntVar ourselves
+    return solver.MakeProd(int_expr(solver, o.call("left")), int_expr(solver, o.call("right")));
+  } else if (class_name == "ORTools::Expression") {
+    const Array parts(o.call("parts"));
 
-    std::vector<operations_research::IntVar*> vars;
-    std::vector<int64_t> coeffs;
-    int64_t constant = 0;
+    switch (parts.size()) {
+    case 1:
+      // Unwrap unary Expression
+      return int_expr(solver, parts[0]);
 
-    for (const auto& entry : rb_coeffs) {
-      auto coeff = int64_strict(entry.value.value());
-      if (Object(entry.key).is_nil()) {
-        constant = coeff;
+    case 2:
+      // ExpressionMethods#-(other) is implemented using + -(other), which we extract here mainly to help the common IntVar-IntVar case
+      if (parts[1].class_of().name() == "ORTools::Product" &&
+          parts[1].call("left").class_of().name() == "ORTools::Constant" &&
+          Rice::detail::From_Ruby<int64_t>().convert(parts[1].call("left").call("value")) == -1) {
+        return solver.MakeDifference(int_expr(solver, parts[0]), int_expr(solver, parts[1].call("right")));
       } else {
-        vars.push_back(Rice::detail::From_Ruby<operations_research::IntVar*>().convert(entry.key.value()));
-        coeffs.push_back(coeff);
+        return solver.MakeSum(int_expr(solver, parts[0]), int_expr(solver, parts[1]));
+      }
+
+    default:
+      // There's a sum(IntVar[]), but not a sum(IntExpr[])
+      if (std::all_of(parts.begin(), parts.end(), [](Object object) {
+        return Rice::detail::From_Ruby<operations_research::IntVar*>().is_convertible(object);
+      })) {
+        std::vector<operations_research::IntVar*> vars;
+        std::transform(parts.begin(), parts.end(), std::back_inserter(vars), [](Object object) {
+          return Rice::detail::From_Ruby<operations_research::IntVar*>().convert(object);
+        });
+        return solver.MakeSum(vars);
+      } else {
+        operations_research::IntExpr *curr = int_expr(solver, parts[0]);
+        for (size_t index = 1; index < parts.size(); index++) curr = solver.MakeSum(curr, int_expr(solver, parts[index]));
+        return curr;
       }
     }
+  } else if (class_name == "ORTools::Comparison") {
+    auto left = int_expr(solver, o.call("left"));
+    auto right = int_expr(solver, o.call("right"));
+    std::string op = o.call("op").to_s().str();
 
-    operations_research::IntExpr* expr = solver.MakeScalProd(vars, coeffs);
-    if (constant != 0) {
-      expr = solver.MakeSum(expr, constant);
+    // These methods handle the left and right Bound() cases specially themselves, so we don't need to optimize
+    // IntVar op Constant or Constant op IntVar ourselves
+    if (op == "==") {
+      return solver.MakeIsEqualVar(left, right);
+    } else if (op == "!=") {
+      return solver.MakeIsDifferentVar(left, right);
+    } else if (op == ">") {
+      return solver.MakeIsGreaterVar(left, right);
+    } else if (op == ">=") {
+      return solver.MakeIsGreaterOrEqualVar(left, right);
+    } else if (op == "<") {
+      return solver.MakeIsLessVar(left, right);
+    } else if (op == "<=") {
+      return solver.MakeIsLessOrEqualVar(left, right);
+    } else {
+      throw std::runtime_error{"Unknown operator"};
     }
-    return expr;
+  } else {
+    // Anything else should be a Variable, ie. a RoutingIntVar
+    return Rice::detail::From_Ruby<operations_research::IntVar*>().convert(o);
+  }
 }
 
 void init_routing(Rice::Module& m) {
