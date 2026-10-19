@@ -170,6 +170,15 @@ class RoutingConstraintsTest < Minitest::Test
     assert_equal [0, 1, 2, 0], route
   end
 
+  def test_comparison_comparison_comparison
+    build_routing
+    @routing.solver.add((@distance_dimension.cumul_var(@manager.node_to_index(1)) == 9999) >= (@distance_dimension.cumul_var(@manager.node_to_index(2)) == 731))
+    solve
+
+    assert_equal :success, @routing.status
+    assert_equal [0, 1, 2, 0], route
+  end
+
   private
 
   def build_routing

@@ -149,6 +149,28 @@ operations_research::IntExpr* int_expr(operations_research::Solver& solver, Obje
         return curr;
       }
     }
+  } else if (class_name == "ORTools::Comparison") {
+    auto left = int_expr(solver, o.call("left"));
+    auto right = int_expr(solver, o.call("right"));
+    std::string op = o.call("op").to_s().str();
+
+    // These methods handle the left and right Bound() cases specially themselves, so we don't need to optimize
+    // IntVar op Constant or Constant op IntVar ourselves
+    if (op == "==") {
+      return solver.MakeIsEqualVar(left, right);
+    } else if (op == "!=") {
+      return solver.MakeIsDifferentVar(left, right);
+    } else if (op == ">") {
+      return solver.MakeIsGreaterVar(left, right);
+    } else if (op == ">=") {
+      return solver.MakeIsGreaterOrEqualVar(left, right);
+    } else if (op == "<") {
+      return solver.MakeIsLessVar(left, right);
+    } else if (op == "<=") {
+      return solver.MakeIsLessOrEqualVar(left, right);
+    } else {
+      throw std::runtime_error{"Unknown operator"};
+    }
   } else {
     // Anything else should be a Variable, ie. a RoutingIntVar
     return Rice::detail::From_Ruby<operations_research::IntVar*>().convert(o);
