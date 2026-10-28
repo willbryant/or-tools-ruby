@@ -28,7 +28,7 @@ else
   os_version = os_info["VERSION_ID"]
 
   # A single aarch64 build is available and is compatible with these distributions
-  valid_aarch64_distribution = os == "arch" || (os == "ubuntu" && ["24.04", "22.04", "20.04"].include?(os_version)) || (os == "debian" && ["12", "11"].include?(os_version))
+  valid_aarch64_distribution = os == "arch" || (os == "ubuntu" && ["24.04", "22.04", "20.04"].include?(os_version)) || (os == "debian" && ["13", "12", "11"].include?(os_version))
   if arm && valid_aarch64_distribution
     filename = "or-tools_aarch64_AlmaLinux-8.10_cpp_v#{version}.tar.gz"
     checksum = "422320008143611479b05216f3fa4dce65ca9d1a4751a070ecbe3a2ef1ebea4b"
